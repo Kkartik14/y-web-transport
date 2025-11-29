@@ -1,8 +1,8 @@
-# y-web-transport
+# yjs-webtransport
 
 > WebTransport provider for Y.js — Real-time collaboration over QUIC with unreliable datagram support.
 
-[![npm version](https://img.shields.io/npm/v/y-web-transport.svg)](https://www.npmjs.com/package/y-web-transport)
+[![npm version](https://img.shields.io/npm/v/yjs-webtransport.svg)](https://www.npmjs.com/package/yjs-webtransport)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Features
@@ -16,7 +16,7 @@
 
 ## Why WebTransport over WebSocket?
 
-| Feature | WebSocket | y-web-transport |
+| Feature | WebSocket | yjs-webtransport |
 |---------|-----------|-----------------|
 | Transport | TCP | QUIC |
 | Cursor latency | ~50ms+ under load | **~19ms consistent** |
@@ -26,14 +26,14 @@
 ## Installation
 
 ```bash
-npm install y-web-transport yjs
+npm install yjs-webtransport yjs
 ```
 
 ## Quick Start
 
 ```typescript
 import * as Y from 'yjs';
-import { WebTransportProvider } from 'y-web-transport';
+import { WebTransportProvider } from 'yjs-webtransport';
 
 const doc = new Y.Doc();
 const provider = new WebTransportProvider(
@@ -63,7 +63,7 @@ provider.awareness.setLocalStateField('cursor', {
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                  y-web-transport Architecture                │
+│                  yjs-webtransport Architecture               │
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │   Document Changes ──► QUIC Stream (reliable) ──► Server    │
