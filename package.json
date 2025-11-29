@@ -1,0 +1,71 @@
+{
+  "name": "y-web-transport",
+  "version": "0.1.0",
+  "description": "WebTransport provider for Y.js — Real-time collaboration over QUIC with unreliable datagram support",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "quic",
+    "webtransport",
+    "http3",
+    "collaboration",
+    "realtime",
+    "multiplayer",
+    "cursors",
+    "presence",
+    "awareness",
+    "crdt",
+    "yjs",
+    "sync",
+    "datagrams",
+    "unreliable"
+  ],
+  "author": "Kartik Gupta",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kkartik14/y-web-transport"
+  },
+  "bugs": {
+    "url": "https://github.com/Kkartik14/y-web-transport/issues"
+  },
+  "homepage": "https://github.com/Kkartik14/y-web-transport#readme",
+  "peerDependencies": {
+    "yjs": "^13.0.0"
+  },
+  "dependencies": {
+    "lib0": "^0.2.88",
+    "y-protocols": "^1.0.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0",
+    "yjs": "^13.6.10"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

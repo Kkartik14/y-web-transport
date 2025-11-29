@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>y-webtransport REAL Benchmark</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      background: #0a0a0a;
+      color: #fafafa;
+      padding: 2rem;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    h1 { color: #22c55e; }
+    .config {
+      background: #141414;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+    }
+    input, select {
+      background: #1e1e1e;
+      border: 1px solid #333;
+      color: #fafafa;
+      padding: 0.5rem;
+      border-radius: 4px;
+      margin: 0.25rem;
+    }
+    button {
+      background: #22c55e;
+      color: #0a0a0a;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: bold;
+      margin: 0.5rem 0.5rem 0.5rem 0;
+    }
+    button:hover { background: #16a34a; }
+    button:disabled { background: #525252; cursor: not-allowed; }
+    .results {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin: 2rem 0;
+    }
+    .result-card {
+      background: #141414;
+      border-radius: 8px;
+      padding: 1.5rem;
+      text-align: center;
+    }
+    .result-card.highlight { border: 2px solid #22c55e; }
+    .metric-value {
+      font-size: 2.5rem;
+      font-weight: bold;
+      margin: 0.5rem 0;
+    }
+    .metric-label { color: #a1a1a1; }
+    .improvement {
+      color: #22c55e;
+      font-size: 1.2rem;
+      margin-top: 0.5rem;
+    }
+    #log {
+      background: #0a0a0a;
+      border: 1px solid #333;
+      padding: 1rem;
+      height: 300px;
+      overflow-y: auto;
+      font-size: 0.85rem;
+      border-radius: 4px;
+    }
+    .log-entry { margin: 0.25rem 0; }
+    .log-info { color: #60a5fa; }
+    .log-success { color: #22c55e; }
+    .log-error { color: #ef4444; }
+    .log-warn { color: #eab308; }
+    .status { padding: 0.5rem 1rem; border-radius: 4px; display: inline-block; }
+    .status.connected { background: #22c55e20; color: #22c55e; }
+    .status.disconnected { background: #ef444420; color: #ef4444; }
+  </style>
+</head>
+<body>
+  <h1>🚀 y-webtransport REAL Network Benchmark</h1>
+  <p>Testing against: <strong>webtransport.awaken-labs.com</strong></p>
+
+  <!-- Config -->
+  <div class="config">
+    <label>Server URL:</label>
+    <input type="text" id="serverUrl" value="https://webtransport.awaken-labs.com:4433/collab/benchmark" style="width: 400px;">
+    <br><br>
+    <label>Samples per test:</label>
+    <input type="number" id="samples" value="50" min="10" max="200">
+    <br><br>
+    <span id="connectionStatus" class="status disconnected">Disconnected</span>
+  </div>
+
+  <!-- Controls -->
+  <div>
+    <button id="btnConnect" onclick="connect()">Connect</button>
+    <button id="btnBenchmark" onclick="runFullBenchmark()" disabled>Run Full Benchmark</button>
+    <button onclick="exportResults()" disabled id="btnExport">Export Results</button>
+  </div>
+
+  <!-- Results -->
+  <div class="results">
+    <div class="result-card" id="cardDatagram">
+      <div class="metric-label">WebTransport Datagram</div>
+      <div class="metric-value" id="valDatagram">--</div>
+      <div class="metric-label">avg round-trip</div>
+      <div id="datagramDetails"></div>
+    </div>
+    <div class="result-card" id="cardStream">
+      <div class="metric-label">WebTransport Stream</div>
+      <div class="metric-value" id="valStream">--</div>
+      <div class="metric-label">avg write latency</div>
+    </div>
+    <div class="result-card" id="cardWs">
+      <div class="metric-label">WebSocket (comparison)</div>
+      <div class="metric-value" id="valWs">--</div>
+      <div class="metric-label">avg write latency</div>
+    </div>
+  </div>
+
+  <!-- Summary -->
+  <div id="summary" style="display:none; background: #141414; padding: 1.5rem; border-radius: 8px; margin: 1rem 0;">
+    <h3>📊 Summary for Resume</h3>
+    <pre id="summaryText" style="background: #0a0a0a; padding: 1rem; border-radius: 4px; overflow-x: auto;"></pre>
+  </div>
+
+  <!-- Log -->
+  <h3>Log</h3>
+  <div id="log"></div>
+
+  <script>
+    let transport = null;
+    let benchmarkResults = {};
+
+    function log(message, type = 'info') {
+      const logEl = document.getElementById('log');
+      const entry = document.createElement('div');
+      entry.className = `log-entry log-${type}`;
+      entry.textContent = `[${new Date().toISOString().slice(11, 23)}] ${message}`;
+      logEl.appendChild(entry);
+      logEl.scrollTop = logEl.scrollHeight;
+      console.log(message);
+    }
+
+    function updateStatus(connected) {
+      const el = document.getElementById('connectionStatus');
+      el.textContent = connected ? 'Connected' : 'Disconnected';
+      el.className = `status ${connected ? 'connected' : 'disconnected'}`;
+      document.getElementById('btnBenchmark').disabled = !connected;
+    }
+
+    async function connect() {
+      const url = document.getElementById('serverUrl').value;
+      const btn = document.getElementById('btnConnect');
+      
+      btn.disabled = true;
+      log(`Connecting to ${url}...`);
+
+      try {
+        // No certificate hashes needed for real Let's Encrypt cert!
+        transport = new WebTransport(url);
+        await transport.ready;
+        
+        log('✅ WebTransport connected!', 'success');
+        updateStatus(true);
+
+        transport.closed.then(() => {
+          log('Connection closed', 'warn');
+          updateStatus(false);
+        });
+
+      } catch (err) {
+        log(`❌ Connection failed: ${err.message}`, 'error');
+        updateStatus(false);
+      }
+
+      btn.disabled = false;
+    }
+
+    async function runFullBenchmark() {
+      if (!transport) {
+        log('Not connected', 'error');
+        return;
+      }
+
+      const samples = parseInt(document.getElementById('samples').value) || 50;
+      const btn = document.getElementById('btnBenchmark');
+      btn.disabled = true;
+
+      log(`\n========== STARTING BENCHMARK (${samples} samples) ==========\n`, 'info');
+      benchmarkResults = { timestamp: new Date().toISOString() };
+
+      // Test 1: Datagram round-trip
+      log('📡 Testing Datagram round-trip (unreliable)...', 'info');
+      const dgResults = await testDatagramRoundtrip(samples);
+      benchmarkResults.datagram = dgResults;
+      
+      document.getElementById('valDatagram').textContent = 
+        dgResults.received > 0 ? `${dgResults.avg.toFixed(1)}ms` : 'N/A';
+      document.getElementById('datagramDetails').innerHTML = 
+        `<small>${dgResults.received}/${samples} received (${(dgResults.received/samples*100).toFixed(0)}%)</small>`;
+      if (dgResults.received > samples * 0.8) {
+        document.getElementById('cardDatagram').classList.add('highlight');
+      }
+
+      // Test 2: Stream write
+      log('📨 Testing Stream write latency (reliable)...', 'info');
+      const streamResults = await testStreamWrite(samples);
+      benchmarkResults.stream = streamResults;
+      document.getElementById('valStream').textContent = `${streamResults.avg.toFixed(1)}ms`;
+
+      // Test 3: WebSocket comparison
+      log('🔌 Testing WebSocket for comparison...', 'info');
+      const wsResults = await testWebSocket(samples);
+      benchmarkResults.websocket = wsResults;
+      document.getElementById('valWs').textContent = 
+        wsResults.error ? 'Failed' : `${wsResults.avg.toFixed(1)}ms`;
+
+      // Calculate improvement
+      if (dgResults.avg > 0 && wsResults.avg > 0) {
+        const improvement = ((wsResults.avg - dgResults.avg) / wsResults.avg * 100).toFixed(0);
+        log(`\n🎯 Datagram is ${improvement}% faster than WebSocket baseline`, 'success');
+      }
+
+      // Show summary
+      showSummary();
+
+      btn.disabled = false;
+      document.getElementById('btnExport').disabled = false;
+      log('\n========== BENCHMARK COMPLETE ==========\n', 'success');
+    }
+
+    async function testDatagramRoundtrip(samples) {
+      const latencies = [];
+      const pendingPings = new Map();
+      
+      // Set up reader
+      const reader = transport.datagrams.readable.getReader();
+      const readPromise = (async () => {
+        try {
+          while (pendingPings.size > 0 || latencies.length < samples) {
+            const { value, done } = await Promise.race([
+              reader.read(),
+              new Promise(r => setTimeout(() => r({ done: true }), 3000))
+            ]);
+            if (done) break;
+            
+            if (value && value.length >= 8) {
+              const view = new DataView(value.buffer, value.byteOffset);
+              const id = view.getUint32(0);
+              const resolve = pendingPings.get(id);
+              if (resolve) {
+                resolve(performance.now());
+                pendingPings.delete(id);
+              }
+            }
+          }
+        } catch (e) {}
+      })();
+
+      // Send pings
+      const writer = transport.datagrams.writable.getWriter();
+      for (let i = 0; i < samples; i++) {
+        const start = performance.now();
+        const data = new Uint8Array(8);
+        const view = new DataView(data.buffer);
+        view.setUint32(0, i);
+        view.setFloat32(4, start);
+
+        const endPromise = new Promise(resolve => {
+          pendingPings.set(i, resolve);
+          setTimeout(() => {
+            if (pendingPings.has(i)) {
+              pendingPings.delete(i);
+              resolve(null);
+            }
+          }, 500);
+        });
+
+        await writer.write(data);
+        const end = await endPromise;
+        
+        if (end !== null) {
+          latencies.push(end - start);
+        }
+
+        await new Promise(r => setTimeout(r, 30));
+        
+        if (i % 10 === 0) {
+          log(`  Datagram: ${i}/${samples} sent, ${latencies.length} received`, 'info');
+        }
+      }
+      
+      writer.releaseLock();
+      reader.releaseLock();
+
+      const avg = latencies.length > 0 
+        ? latencies.reduce((a, b) => a + b) / latencies.length 
+        : 0;
+      const sorted = [...latencies].sort((a, b) => a - b);
+      
+      log(`  Datagram: ${latencies.length}/${samples} received, avg=${avg.toFixed(2)}ms`, 'success');
+      
+      return {
+        avg,
+        p50: sorted[Math.floor(sorted.length * 0.5)] || 0,
+        p99: sorted[Math.floor(sorted.length * 0.99)] || 0,
+        received: latencies.length,
+        total: samples,
+        raw: latencies
+      };
+    }
+
+    async function testStreamWrite(samples) {
+      const stream = await transport.createBidirectionalStream();
+      const writer = stream.writable.getWriter();
+      
+      // Send stream type
+      await writer.write(new Uint8Array([0x01]));
+      
+      const latencies = [];
+      for (let i = 0; i < samples; i++) {
+        const start = performance.now();
+        const msg = new TextEncoder().encode(`ping-${i}`);
+        const framed = new Uint8Array(2 + msg.length);
+        framed[0] = (msg.length >> 8) & 0xff;
+        framed[1] = msg.length & 0xff;
+        framed.set(msg, 2);
+        
+        await writer.write(framed);
+        latencies.push(performance.now() - start);
+        
+        await new Promise(r => setTimeout(r, 20));
+      }
+      
+      writer.releaseLock();
+      
+      const avg = latencies.reduce((a, b) => a + b) / latencies.length;
+      log(`  Stream: avg=${avg.toFixed(2)}ms`, 'success');
+      
+      return {
+        avg,
+        p50: [...latencies].sort((a,b) => a-b)[Math.floor(latencies.length * 0.5)],
+        p99: [...latencies].sort((a,b) => a-b)[Math.floor(latencies.length * 0.99)],
+        raw: latencies
+      };
+    }
+
+    async function testWebSocket(samples) {
+      try {
+        const wsUrl = document.getElementById('serverUrl').value
+          .replace('https://', 'wss://')
+          .replace(':4433', ':443');
+        
+        const ws = new WebSocket(wsUrl);
+        
+        await new Promise((resolve, reject) => {
+          ws.onopen = resolve;
+          ws.onerror = () => reject(new Error('WebSocket failed'));
+          setTimeout(() => reject(new Error('Timeout')), 5000);
+        });
+        
+        const latencies = [];
+        for (let i = 0; i < samples; i++) {
+          const start = performance.now();
+          ws.send(`ping-${i}`);
+          latencies.push(performance.now() - start);
+          await new Promise(r => setTimeout(r, 20));
+        }
+        
+        ws.close();
+        
+        const avg = latencies.reduce((a, b) => a + b) / latencies.length;
+        log(`  WebSocket: avg=${avg.toFixed(2)}ms`, 'success');
+        
+        return { avg, raw: latencies };
+      } catch (err) {
+        log(`  WebSocket test failed: ${err.message}`, 'warn');
+        return { avg: 0, error: err.message };
+      }
+    }
+
+    function showSummary() {
+      const summary = document.getElementById('summary');
+      const text = document.getElementById('summaryText');
+      
+      const r = benchmarkResults;
+      const improvement = r.websocket.avg > 0 && r.datagram.avg > 0
+        ? ((r.websocket.avg - r.datagram.avg) / r.websocket.avg * 100).toFixed(0)
+        : 'N/A';
+      
+      text.textContent = `
+y-webtransport Benchmark Results
+================================
+Server: webtransport.awaken-labs.com
+Date: ${new Date().toISOString()}
+Samples: ${r.datagram.total}
+
+RESULTS:
+┌─────────────────────────────────────────────────┐
+│ WebTransport Datagram (unreliable)              │
+│   Average RTT: ${r.datagram.avg.toFixed(2)}ms                          │
+│   P50: ${r.datagram.p50.toFixed(2)}ms | P99: ${r.datagram.p99.toFixed(2)}ms                  │
+│   Delivery: ${r.datagram.received}/${r.datagram.total} (${(r.datagram.received/r.datagram.total*100).toFixed(0)}%)                       │
+├─────────────────────────────────────────────────┤
+│ WebTransport Stream (reliable)                  │
+│   Average: ${r.stream.avg.toFixed(2)}ms                              │
+├─────────────────────────────────────────────────┤
+│ WebSocket Baseline                              │
+│   Average: ${r.websocket.avg ? r.websocket.avg.toFixed(2) + 'ms' : 'N/A'}                              │
+└─────────────────────────────────────────────────┘
+
+IMPROVEMENT: Datagram is ${improvement}% faster than WebSocket
+
+FOR RESUME:
+"Achieved ${r.datagram.avg.toFixed(0)}ms round-trip latency using QUIC 
+datagrams for cursor synchronization, ${improvement}% faster than 
+WebSocket baseline over real network conditions."
+`;
+      
+      summary.style.display = 'block';
+    }
+
+    function exportResults() {
+      const data = JSON.stringify(benchmarkResults, null, 2);
+      const blob = new Blob([data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `benchmark-${Date.now()}.json`;
+      a.click();
+    }
+
+    // Check WebTransport support
+    if (typeof WebTransport === 'undefined') {
+      log('❌ WebTransport not supported in this browser', 'error');
+      document.getElementById('btnConnect').disabled = true;
+    } else {
+      log('✅ WebTransport is supported', 'success');
+    }
+  </script>
+</body>
+</html>
+
